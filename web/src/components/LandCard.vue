@@ -79,14 +79,30 @@ function getPlantSizeText(land: any) {
     return ''
   return `${size}x${size}`
 }
+
+function getMutantBadgeLabel(flag: string) {
+  if (flag === 'current')
+    return '现变'
+  if (flag === 'potential')
+    return '潜变'
+  return ''
+}
+
+function getMutantBadgeClass(flag: string) {
+  if (flag === 'current')
+    return 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300'
+  if (flag === 'potential')
+    return 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300'
+  return ''
+}
 </script>
 
 <template>
   <div
-    class="relative flex h-full min-h-[140px] flex-col items-center rounded-lg border p-2 transition hover:shadow-md dark:border-gray-700"
+    class="relative h-full min-h-[140px] flex flex-col items-center border rounded-lg p-2 transition dark:border-gray-700 hover:shadow-md"
     :class="getLandStatusClass(land)"
   >
-    <div class="absolute left-1 top-1 font-mono text-[10px] leading-4 text-gray-400">
+    <div class="absolute left-1 top-1 text-[10px] text-gray-400 leading-4 font-mono">
       <template v-if="isMergedCard && Array.isArray(land.mergedLandIds) && land.mergedLandIds.length">
         <div
           v-for="(row, rowIndex) in land.mergedLandIds"
@@ -107,18 +123,27 @@ function getPlantSizeText(land: any) {
       </template>
     </div>
 
-    <div
-      v-if="land.plantSize > 1"
-      class="absolute right-1 top-1 rounded bg-pink-100 px-1 py-0.5 text-[10px] text-pink-700 dark:bg-pink-900/30 dark:text-pink-300"
-    >
-      合种 {{ getPlantSizeText(land) }}
+    <div class="absolute right-1 top-1 flex flex-col items-end gap-1">
+      <div
+        v-if="land.mutantFlag"
+        class="rounded px-1 py-0.5 text-[10px]"
+        :class="getMutantBadgeClass(land.mutantFlag)"
+      >
+        {{ getMutantBadgeLabel(land.mutantFlag) }}
+      </div>
+      <div
+        v-if="land.plantSize > 1"
+        class="rounded bg-pink-100 px-1 py-0.5 text-[10px] text-pink-700 dark:bg-pink-900/30 dark:text-pink-300"
+      >
+        合种 {{ getPlantSizeText(land) }}
+      </div>
     </div>
 
     <div
-      class="flex w-full flex-1 flex-col items-center"
+      class="w-full flex flex-1 flex-col items-center"
       :class="isMergedCard ? 'justify-center pt-4' : 'justify-start pt-4'"
     >
-      <div class="mb-1 flex h-10 w-10 items-center justify-center">
+      <div class="mb-1 h-10 w-10 flex items-center justify-center">
         <img
           v-if="land.seedImage"
           :src="getSafeImageUrl(land.seedImage)"

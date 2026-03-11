@@ -104,6 +104,7 @@ const typeMappings = [
     ['ClaimAllRewardsV2Request', 'gamepb.illustratedpb.ClaimAllRewardsV2Request'],
     ['ClaimAllRewardsV2Reply', 'gamepb.illustratedpb.ClaimAllRewardsV2Reply'],
     // 好友
+    ['GetGameFriendsRequest', 'gamepb.friendpb.GetGameFriendsRequest'],
     ['GetAllFriendsRequest', 'gamepb.friendpb.GetAllRequest'],
     ['GetAllFriendsReply', 'gamepb.friendpb.GetAllReply'],
     ['SyncAllRequest', 'gamepb.friendpb.SyncAllRequest'],

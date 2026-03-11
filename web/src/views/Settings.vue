@@ -889,7 +889,7 @@ async function handleTestOffline() {
             <div class="border border-blue-200 rounded-lg bg-blue-50/70 p-3 text-gray-800 shadow-sm dark:border-blue-500/50 dark:bg-[#17243a] dark:text-white">
               <div class="mb-1 flex items-center justify-between gap-3">
                 <div class="min-w-0 flex items-center gap-2">
-                  <div class="h-9 w-9 flex items-center justify-center rounded-lg border border-blue-300/70 bg-white/90 dark:border-blue-500/40 dark:bg-blue-500/20">
+                  <div class="h-9 w-9 flex items-center justify-center border border-blue-300/70 rounded-lg bg-white/90 dark:border-blue-500/40 dark:bg-blue-500/20">
                     <div class="i-carbon-filter text-xl text-blue-700 dark:text-blue-200" />
                   </div>
                   <div class="min-w-0">
@@ -897,7 +897,7 @@ async function handleTestOffline() {
                       <div class="truncate text-base font-semibold">
                         排除作物
                       </div>
-                      <div class="rounded-full border border-blue-300 bg-white/95 px-2 py-0.5 text-xs text-blue-700 shadow-sm dark:border-blue-300/60 dark:bg-blue-500/15 dark:text-blue-100">
+                      <div class="border border-blue-300 rounded-full bg-white/95 px-2 py-0.5 text-xs text-blue-700 shadow-sm dark:border-blue-300/60 dark:bg-blue-500/15 dark:text-blue-100">
                         <span class="font-semibold">{{ stealBlacklistCount }} / {{ stealCropOptions.length }}</span>
                       </div>
                     </div>
@@ -908,7 +908,7 @@ async function handleTestOffline() {
                 </div>
                 <button
                   type="button"
-                  class="h-9 w-9 flex items-center justify-center rounded-lg border border-blue-300/70 bg-white/90 text-blue-700 transition hover:bg-blue-100 dark:border-blue-500/40 dark:bg-blue-500/20 dark:text-blue-100 dark:hover:bg-blue-500/30"
+                  class="h-9 w-9 flex items-center justify-center border border-blue-300/70 rounded-lg bg-white/90 text-blue-700 transition dark:border-blue-500/40 dark:bg-blue-500/20 hover:bg-blue-100 dark:text-blue-100 dark:hover:bg-blue-500/30"
                   :aria-expanded="!stealBlacklistCollapsed"
                   @click="stealBlacklistCollapsed = !stealBlacklistCollapsed"
                 >
@@ -930,7 +930,7 @@ async function handleTestOffline() {
                     <BaseButton
                       variant="outline"
                       size="sm"
-                      class="!border-blue-300 !text-blue-700 hover:!bg-blue-100 dark:!border-blue-400/70 dark:!text-blue-100 dark:hover:!bg-blue-500/20"
+                      class="!border-blue-300 !text-blue-700 dark:!border-blue-400/70 hover:!bg-blue-100 dark:!text-blue-100 dark:hover:!bg-blue-500/20"
                       :disabled="stealBlacklistCount >= stealCropOptions.length"
                       @click="filterUnselectedStealCrops"
                     >
@@ -949,58 +949,60 @@ async function handleTestOffline() {
                 </div>
 
                 <div class="relative mb-2">
-                  <div class="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-base text-blue-500/70 dark:text-blue-200/70">
+                  <div class="pointer-events-none absolute left-3 top-1/2 text-base text-blue-500/70 -translate-y-1/2 dark:text-blue-200/70">
                     <div class="i-carbon-search" />
                   </div>
                   <input
                     v-model="stealBlacklistSearch"
                     type="text"
                     placeholder="搜索作物名或 Seed ID"
-                    class="w-full border border-blue-200 rounded-lg bg-white py-2 pl-9 pr-3 text-sm text-gray-700 outline-none placeholder:text-gray-400 focus:border-blue-400 focus:ring-2 focus:ring-blue-300/20 dark:border-blue-400/40 dark:bg-[#1c2b45] dark:text-blue-50 dark:placeholder:text-blue-200/50 dark:focus:border-blue-300/70"
+                    class="w-full border border-blue-200 rounded-lg bg-white py-2 pl-9 pr-3 text-sm text-gray-700 outline-none dark:border-blue-400/40 focus:border-blue-400 dark:bg-[#1c2b45] dark:text-blue-50 placeholder:text-gray-400 focus:ring-2 focus:ring-blue-300/20 dark:focus:border-blue-300/70 dark:placeholder:text-blue-200/50"
                   >
                 </div>
 
-              <div v-if="stealCropOptions.length > 0">
-                <div
-                  v-if="filteredStealCropOptions.length > 0"
-                  class="max-h-56 grid grid-cols-1 gap-2 overflow-y-auto pr-1 sm:grid-cols-2 lg:grid-cols-3"
-                >
-                  <button
-                    v-for="crop in filteredStealCropOptions"
-                    :key="crop.plantId"
-                    type="button"
-                    class="flex w-full cursor-pointer items-center gap-2 rounded border bg-white px-2 py-1.5 text-left text-xs text-gray-700 transition dark:bg-gray-800 dark:text-gray-300"
-                    :class="isCropBlacklisted(crop.plantId)
-                      ? 'border-blue-500 ring-1 ring-blue-300/70 dark:border-blue-400 dark:ring-blue-700/50'
-                      : 'border-gray-200 hover:border-blue-300 dark:border-gray-700 dark:hover:border-blue-700'"
-                    :aria-pressed="isCropBlacklisted(crop.plantId)"
-                    @click="toggleStealBlacklistCrop(crop.plantId)"
+                <div v-if="stealCropOptions.length > 0">
+                  <div
+                    v-if="filteredStealCropOptions.length > 0"
+                    class="grid grid-cols-1 max-h-56 gap-2 overflow-y-auto pr-1 lg:grid-cols-3 sm:grid-cols-2"
                   >
-                    <img
-                      v-if="crop.image"
-                      :src="crop.image"
-                      :alt="crop.name"
-                      class="h-[1.8rem] w-[1.8rem] rounded object-cover"
+                    <button
+                      v-for="crop in filteredStealCropOptions"
+                      :key="crop.plantId"
+                      type="button"
+                      class="w-full flex cursor-pointer items-center gap-2 border rounded bg-white px-2 py-1.5 text-left text-xs text-gray-700 transition dark:bg-gray-800 dark:text-gray-300"
+                      :class="isCropBlacklisted(crop.plantId)
+                        ? 'border-blue-500 ring-1 ring-blue-300/70 dark:border-blue-400 dark:ring-blue-700/50'
+                        : 'border-gray-200 hover:border-blue-300 dark:border-gray-700 dark:hover:border-blue-700'"
+                      :aria-pressed="isCropBlacklisted(crop.plantId)"
+                      @click="toggleStealBlacklistCrop(crop.plantId)"
                     >
-                    <div v-else class="h-[1.8rem] w-[1.8rem] flex items-center justify-center rounded bg-gray-100 text-[10px] text-gray-500 dark:bg-gray-700 dark:text-gray-400">
-                      <div class="i-carbon-image" />
-                    </div>
-                    <div class="min-w-0 flex-1">
-                      <div class="truncate text-xs font-medium">{{ crop.name }}</div>
-                      <div class="text-[11px] text-gray-500 dark:text-gray-400">
-                        Seed ID: {{ crop.seedId === null ? '?' : crop.seedId }}   Lv.{{ crop.level === null ? '?' : crop.level }}
+                      <img
+                        v-if="crop.image"
+                        :src="crop.image"
+                        :alt="crop.name"
+                        class="h-[1.8rem] w-[1.8rem] rounded object-cover"
+                      >
+                      <div v-else class="h-[1.8rem] w-[1.8rem] flex items-center justify-center rounded bg-gray-100 text-[10px] text-gray-500 dark:bg-gray-700 dark:text-gray-400">
+                        <div class="i-carbon-image" />
                       </div>
-                    </div>
-                  </button>
+                      <div class="min-w-0 flex-1">
+                        <div class="truncate text-xs font-medium">
+                          {{ crop.name }}
+                        </div>
+                        <div class="text-[11px] text-gray-500 dark:text-gray-400">
+                          Seed ID: {{ crop.seedId === null ? '?' : crop.seedId }}   Lv.{{ crop.level === null ? '?' : crop.level }}
+                        </div>
+                      </div>
+                    </button>
+                  </div>
+                  <div v-else class="rounded bg-white px-2 py-2 text-xs text-gray-500 dark:bg-gray-800 dark:text-gray-400">
+                    未找到匹配作物，请调整关键词后重试。
+                  </div>
                 </div>
                 <div v-else class="rounded bg-white px-2 py-2 text-xs text-gray-500 dark:bg-gray-800 dark:text-gray-400">
-                  未找到匹配作物，请调整关键词后重试。
+                  暂无可选作物，请先等待种子列表加载完成。
                 </div>
               </div>
-              <div v-else class="rounded bg-white px-2 py-2 text-xs text-gray-500 dark:bg-gray-800 dark:text-gray-400">
-                暂无可选作物，请先等待种子列表加载完成。
-              </div>
-            </div>
             </div>
             <div class="border border-amber-200 rounded bg-amber-50/60 p-3 dark:border-amber-800/60 dark:bg-amber-900/10">
               <div class="mb-2 text-sm text-amber-800 font-medium dark:text-amber-300">
