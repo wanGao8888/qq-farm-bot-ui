@@ -14,9 +14,9 @@ const {
   getFriendQuietHours,
   getFriendBlacklist,
   getAutomation,
+  getFriendCache,
+  updateFriendCache,
 } = require('../models/store')
-const { getDataFile } = require('../config/runtime-paths')
-const { readJsonFile, writeJsonFileAtomic } = require('./json-db')
 const {
   sendMsgAsync,
   getUserState,
@@ -34,13 +34,12 @@ const {
 } = require('../utils/utils')
 const {
   getCurrentPhase,
-  getMutantFlag,
   setOperationLimitsCallback,
   buildLandMap,
   getDisplayLandContext,
+  getMutantFlag,
   isOccupiedSlaveLand,
 } = require('./farm')
-const { getInteractRecords } = require('./interact')
 const { createScheduler } = require('./scheduler')
 const { recordOperation } = require('./stats')
 const { sellAllFruits } = require('./warehouse')
@@ -243,119 +242,152 @@ function markIdleFriendProbeCooldown(friendGid, hadAction, nowMs = Date.now()) {
 
 // ============ 好友 API ============
 
-const FRIENDS_FILE = getDataFile('friends.json')
-let cachedFriends = []
+async function fetchFriendsFromApi() {
+  const isQQ = CONFIG.platform === 'qq'
+  if (isQQ) {
+    const syncReq = types.SyncAllRequest || types.SyncAllFriendsRequest
+    const syncRep = types.SyncAllReply || types.SyncAllFriendsReply
+    if (!syncReq || !syncRep) throw new Error('SyncAll 接口类型未加载')
+    const body = syncReq.encode(syncReq.create({ open_ids: [] })).finish()
+    const { body: replyBody } = await sendMsgAsync(
+      'gamepb.friendpb.FriendService',
+      'SyncAll',
+      body,
+    )
+    return syncRep.decode(replyBody)
+  }
 
-function loadFriendsCache() {
-  try {
-    const data = readJsonFile(FRIENDS_FILE)
-    if (Array.isArray(data)) {
-      cachedFriends = data
-    }
-  } catch {
-    // ignore
+  const body = types.GetAllFriendsRequest.encode(
+    types.GetAllFriendsRequest.create({}),
+  ).finish()
+  const { body: replyBody } = await sendMsgAsync(
+    'gamepb.friendpb.FriendService',
+    'GetAll',
+    body,
+  )
+  return types.GetAllFriendsReply.decode(replyBody)
+}
+
+function saveFriendsToCache(friends) {
+  if (!Array.isArray(friends) || friends.length === 0) return
+  const cacheItems = friends
+    .map((f) => ({
+      gid: toNum(f.gid),
+      nick: String(f.remark || f.name || '').trim() || `GID:${toNum(f.gid)}`,
+      avatarUrl: String(f.avatar_url || '').trim(),
+    }))
+    .filter((f) => f.gid > 0)
+  if (cacheItems.length > 0) {
+    updateFriendCache(undefined, cacheItems)
   }
 }
 
-// 启动时加载一次
-loadFriendsCache()
+function buildFriendsFromCache() {
+  const cache = getFriendCache()
+  if (!Array.isArray(cache) || cache.length === 0) return { game_friends: [] }
+  const gameFriends = cache.map((f) => ({
+    gid: toLong(f.gid),
+    name: f.nick || `GID:${f.gid}`,
+    remark: f.nick || '',
+    avatar_url: f.avatarUrl || '',
+    plant: null,
+  }))
+  return { game_friends: gameFriends }
+}
 
-async function getAllFriends() {
-  const isQQ = CONFIG.platform === 'qq'
+const GET_GAME_FRIENDS_BATCH_SIZE = 35
 
-  // 1. 尝试使用分批请求 GetGameFriends
-  // 如果缓存为空，则跳过此步，直接走全量同步
-  let allFriends = []
-
-  // 确保缓存已加载
-  if (cachedFriends.length === 0) {
-    loadFriendsCache()
+async function fetchFriendsByGids(gids) {
+  if (!types.GetGameFriendsRequest) {
+    return []
   }
+  const validGids = (Array.isArray(gids) ? gids : [])
+    .map((g) => toNum(g))
+    .filter((g) => g > 0)
+  if (validGids.length === 0) return []
 
-  const gids = new Set(
-    cachedFriends.map((f) => toNum(f.gid)).filter((g) => g > 0),
-  )
-
-  // 尝试从最近访客中补充 GID
-  try {
-    const records = await getInteractRecords()
-    for (const record of records) {
-      const gid = toNum(record.visitorGid)
-      if (gid > 0) gids.add(gid)
-    }
-  } catch {
-    // ignore interact errors
-  }
-
-  const uniqueGids = Array.from(gids)
-
-  if (uniqueGids.length > 0) {
-    const BATCH_SIZE = 35
-    for (let i = 0; i < uniqueGids.length; i += BATCH_SIZE) {
-      const batch = uniqueGids.slice(i, i + BATCH_SIZE)
+  const allFriends = []
+  for (let i = 0; i < validGids.length; i += GET_GAME_FRIENDS_BATCH_SIZE) {
+    const batch = validGids.slice(i, i + GET_GAME_FRIENDS_BATCH_SIZE)
+    try {
       const body = types.GetGameFriendsRequest.encode(
         types.GetGameFriendsRequest.create({
           gids: batch.map((g) => toLong(g)),
         }),
       ).finish()
-
-      try {
-        const { body: replyBody } = await sendMsgAsync(
-          'gamepb.friendpb.FriendService',
-          'GetGameFriends',
-          body,
-        )
-        if (replyBody && replyBody.length > 0) {
-          const reply = types.GetAllFriendsReply.decode(replyBody)
-          const friends = reply.game_friends || []
-          allFriends = allFriends.concat(friends)
-        }
-      } catch {
-        // ignore specific batch failure
+      const { body: replyBody } = await sendMsgAsync(
+        'gamepb.friendpb.FriendService',
+        'GetGameFriends',
+        body,
+      )
+      if (replyBody && replyBody.length > 0) {
+        const reply = types.GetAllFriendsReply.decode(replyBody)
+        const friends = reply.game_friends || []
+        allFriends.push(...friends)
       }
-      if (i + BATCH_SIZE < uniqueGids.length) await sleep(100)
-    }
-  }
-
-  // 2. 如果分批请求未能获取到任何数据（或者没有缓存），回退到 SyncAll/GetAll
-  if (allFriends.length === 0) {
-    if (isQQ) {
-      const syncReq = types.SyncAllRequest || types.SyncAllFriendsRequest
-      const syncRep = types.SyncAllReply || types.SyncAllFriendsReply
-      if (!syncReq || !syncRep) throw new Error('SyncAll 接口类型未加载')
-      const body = syncReq.encode(syncReq.create({ open_ids: [] })).finish()
-      const { body: replyBody } = await sendMsgAsync(
-        'gamepb.friendpb.FriendService',
-        'SyncAll',
-        body,
-      )
-      const reply = syncRep.decode(replyBody)
-      allFriends = reply.game_friends || []
-    } else {
-      const body = types.GetAllFriendsRequest.encode(
-        types.GetAllFriendsRequest.create({}),
-      ).finish()
-      const { body: replyBody } = await sendMsgAsync(
-        'gamepb.friendpb.FriendService',
-        'GetAll',
-        body,
-      )
-      const reply = types.GetAllFriendsReply.decode(replyBody)
-      allFriends = reply.game_friends || []
-    }
-  }
-
-  // 3. 更新缓存并返回
-  if (allFriends.length > 0) {
-    cachedFriends = allFriends
-    try {
-      writeJsonFileAtomic(FRIENDS_FILE, cachedFriends)
     } catch {
-      // ignore write error
+      // 单批失败不影响其他批次
+    }
+    if (i + GET_GAME_FRIENDS_BATCH_SIZE < validGids.length) {
+      await sleep(100)
+    }
+  }
+  return allFriends
+}
+
+async function getAllFriends() {
+  let apiFriends = []
+  let apiError = null
+
+  try {
+    const reply = await fetchFriendsFromApi()
+    apiFriends = reply.game_friends || []
+    if (apiFriends.length > 0) {
+      saveFriendsToCache(apiFriends)
+    }
+  } catch (err) {
+    apiError = err
+  }
+
+  const cache = getFriendCache()
+  const cacheCount = Array.isArray(cache) ? cache.length : 0
+
+  if (apiFriends.length > 0 && apiFriends.length >= cacheCount) {
+    return { game_friends: apiFriends }
+  }
+
+  if (cacheCount > 0 && cacheCount > apiFriends.length) {
+    const apiGids = new Set(apiFriends.map((f) => toNum(f.gid)))
+    const missingGids = cache
+      .map((f) => f.gid)
+      .filter((g) => g > 0 && !apiGids.has(g))
+
+    if (missingGids.length > 0) {
+      const extraFriends = await fetchFriendsByGids(missingGids)
+      if (extraFriends.length > 0) {
+        const combined = [...apiFriends, ...extraFriends]
+        saveFriendsToCache(extraFriends)
+        return { game_friends: combined }
+      }
     }
 
-    // 返回符合 GetAllReply 结构的简单对象
-    return { game_friends: allFriends }
+    if (apiFriends.length === 0) {
+      const allGids = cache.map((f) => f.gid).filter((g) => g > 0)
+      const friendsFromGids = await fetchFriendsByGids(allGids)
+      if (friendsFromGids.length > 0) {
+        saveFriendsToCache(friendsFromGids)
+        return { game_friends: friendsFromGids }
+      }
+      return buildFriendsFromCache()
+    }
+  }
+
+  if (apiFriends.length > 0) {
+    return { game_friends: apiFriends }
+  }
+
+  if (apiError) {
+    throw apiError
   }
 
   return { game_friends: [] }
@@ -953,7 +985,6 @@ async function getFriendLandsDetail(friendGid) {
         continue
       }
       const phaseVal = currentPhase.phase
-      const mutantFlag = getMutantFlag(plant, currentPhase)
       const plantId = toNum(plant.id)
       const plantName = getPlantName(plantId) || plant.name || '未知'
       const plantCfg = getPlantById(plantId)
@@ -961,6 +992,7 @@ async function getFriendLandsDetail(friendGid) {
       const seedImage = seedId > 0 ? getSeedImageBySeedId(seedId) : ''
       const plantSize = Math.max(1, toNum(plantCfg && plantCfg.size) || 1)
       const phaseName = PHASE_NAMES[phaseVal] || ''
+      const mutantFlag = getMutantFlag(plant, currentPhase)
       const maturePhase = Array.isArray(plant.phases)
         ? plant.phases.find((p) => p && toNum(p.phase) === PlantPhase.MATURE)
         : null
