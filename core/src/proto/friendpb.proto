@@ -43,11 +43,6 @@ message GameFriend {
 // --- 获取所有好友 ---
 message GetAllRequest {}
 
-// --- 批量获取好友详情 ---
-message GetGameFriendsRequest {
-    repeated int64 gids = 1;
-}
-
 message GetAllReply {
     repeated GameFriend game_friends = 1;
     // repeated Invitation invitations = 2;  // 略
