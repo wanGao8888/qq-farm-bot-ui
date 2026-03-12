@@ -1010,6 +1010,63 @@ async function getLandsDetail() {
   }
 }
 
+async function getNonMutantLandIds(landIds) {
+  const ids = [
+    ...new Set(
+      (Array.isArray(landIds) ? landIds : [])
+        .map((id) => toNum(id))
+        .filter(Boolean),
+    ),
+  ]
+  if (ids.length === 0) return []
+  let landsReply
+  try {
+    landsReply = await getAllLands()
+  } catch (e) {
+    logWarn('变异', `获取土地信息失败: ${e.message}`, {
+      module: 'farm',
+      event: 'mutant_check',
+      result: 'error',
+    })
+    return []
+  }
+  const lands = Array.isArray(landsReply && landsReply.lands)
+    ? landsReply.lands
+    : []
+  const landsMap = buildLandMap(lands)
+  const nonMutant = []
+  for (const id of ids) {
+    const land = landsMap.get(id)
+    if (!land) continue
+    if (isOccupiedSlaveLand(land, landsMap)) continue
+    const plant = land.plant
+    if (!plant || !Array.isArray(plant.phases) || plant.phases.length === 0)
+      continue
+    const currentPhase = getCurrentPhase(plant.phases, false, '')
+    if (!currentPhase) continue
+    const mutantFlag = getMutantFlag(plant, currentPhase)
+    if (!mutantFlag) nonMutant.push(id)
+  }
+  return nonMutant
+}
+
+async function plantOnceByStrategy(landsToPlant, state, options = {}) {
+  const skipFertilizer = !!options.skipFertilizer
+  const strategy = getPlantingStrategy()
+  log('种植', `当前种植策略: ${strategy}`, {
+    module: 'farm',
+    event: 'plant_strategy',
+    strategy,
+  })
+
+  if (strategy === 'bag_priority') {
+    const planted = await plantFromBagSeeds(landsToPlant, { skipFertilizer })
+    if (planted) return
+  }
+
+  await plantFromShop(landsToPlant, state, { skipFertilizer })
+}
+
 async function autoPlantEmptyLands(deadLandIds, emptyLandIds) {
   const landsToPlant = [...emptyLandIds]
   const state = getUserState()
@@ -1039,32 +1096,72 @@ async function autoPlantEmptyLands(deadLandIds, emptyLandIds) {
     }
   }
 
-  if (landsToPlant.length === 0) return
+  let pending = [
+    ...new Set(landsToPlant.map((id) => toNum(id)).filter(Boolean)),
+  ]
+  if (pending.length === 0) return
 
-  const strategy = getPlantingStrategy()
-  log('种植', `当前种植策略: ${strategy}`, {
-    module: 'farm',
-    event: 'plant_strategy',
-    strategy,
-  })
-
-  // 2. 背包种子优先模式
-  if (strategy === 'bag_priority') {
-    const planted = await plantFromBagSeeds(landsToPlant)
-    if (planted) return
-    // 背包种子用完或空地不足，继续检查是否需要切换策略
+  const maxRounds = 5
+  for (let round = 1; round <= maxRounds && pending.length > 0; round++) {
+    await plantOnceByStrategy(pending, state, { skipFertilizer: true })
+    await sleep(5000)
+    const nonMutant = await getNonMutantLandIds(pending)
+    if (nonMutant.length === 0) {
+      await runFertilizerByConfig(pending)
+      return
+    }
+    const nonMutantSet = new Set(nonMutant)
+    const mutantLands = pending.filter((id) => !nonMutantSet.has(id))
+    if (mutantLands.length > 0) {
+      await runFertilizerByConfig(mutantLands)
+    }
+    try {
+      await removePlant(nonMutant)
+      log(
+        '变异',
+        `未出现变异，已铲除 ${nonMutant.length} 块 (${nonMutant.join(',')})`,
+        {
+          module: 'farm',
+          event: 'mutant_replant',
+          result: 'replant',
+          count: nonMutant.length,
+          round,
+        },
+      )
+    } catch (e) {
+      logWarn('变异', `变异重种铲除失败: ${e.message}`, {
+        module: 'farm',
+        event: 'mutant_replant',
+        result: 'error',
+        round,
+      })
+      return
+    }
+    pending = nonMutant
   }
 
-  // 3. 非背包优先模式，或背包种子已用完，从商店购买
-  await plantFromShop(landsToPlant, state)
+  if (pending.length > 0) {
+    logWarn(
+      '变异',
+      `重种已达上限，剩余 ${pending.length} 块未出现变异 (${pending.join(',')})`,
+      {
+        module: 'farm',
+        event: 'mutant_replant',
+        result: 'limit',
+        count: pending.length,
+        rounds: maxRounds,
+      },
+    )
+  }
 }
 
 /**
  * 从背包种子种植
  * @returns {boolean} true=已种植或等待中，false=需要从商店购买
  */
-async function plantFromBagSeeds(landsToPlant) {
+async function plantFromBagSeeds(landsToPlant, options = {}) {
   const { getBagSeeds } = require('./warehouse')
+  const skipFertilizer = !!options.skipFertilizer
 
   let bagSeeds
   try {
@@ -1190,7 +1287,9 @@ async function plantFromBagSeeds(landsToPlant) {
   }
 
   // 施肥
-  await runFertilizerByConfig(plantedLands)
+  if (!skipFertilizer) {
+    await runFertilizerByConfig(plantedLands)
+  }
   return true
 }
 
@@ -1237,7 +1336,8 @@ function sortBagSeedsByPriority(bagSeeds, priority) {
 /**
  * 从商店购买种子并种植
  */
-async function plantFromShop(landsToPlant, state) {
+async function plantFromShop(landsToPlant, state, options = {}) {
+  const skipFertilizer = !!options.skipFertilizer
   let bestSeed
   try {
     bestSeed = await findBestSeed()
@@ -1368,7 +1468,9 @@ async function plantFromShop(landsToPlant, state) {
     logWarn('种植', e.message)
   }
 
-  await runFertilizerByConfig(plantedLands)
+  if (!skipFertilizer) {
+    await runFertilizerByConfig(plantedLands)
+  }
 }
 
 function getCurrentPhase(phases, debug, landLabel) {
