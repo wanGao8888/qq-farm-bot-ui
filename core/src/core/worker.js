@@ -675,7 +675,7 @@ async function handleApiCall(msg) {
                 break;
             }
             case 'doFarmOp':
-                result = await runFarmOperation(args[0], { automated: false }); // opType
+                result = await runFarmOperation(args[0], { automated: false, ...args[1] }); // opType, options
                 break;
             case 'getAnalytics': {
                 const { getPlantRankings } = require('../services/analytics');

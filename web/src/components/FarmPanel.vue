@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { useIntervalFn, useWindowSize } from '@vueuse/core'
+import { onClickOutside, useIntervalFn, useWindowSize } from '@vueuse/core'
 import { storeToRefs } from 'pinia'
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import ConfirmModal from '@/components/ConfirmModal.vue'
@@ -22,6 +22,88 @@ const confirmConfig = ref({
   title: '',
   message: '',
   opType: '',
+  options: null as any,
+})
+
+// 右键菜单相关
+const contextMenu = ref<HTMLElement | null>(null)
+const contextMenuVisible = ref(false)
+const contextMenuPosition = ref({ x: 0, y: 0 })
+const selectedLand = ref<any>(null)
+
+// 种子选择相关
+const seedModalVisible = ref(false)
+const bagSeeds = ref<any[]>([])
+const seedLoading = ref(false)
+const seedSearch = ref('')
+
+onClickOutside(contextMenu, () => {
+  contextMenuVisible.value = false
+})
+
+function showContextMenu(e: MouseEvent, land: any) {
+  e.preventDefault()
+  selectedLand.value = land
+  contextMenuPosition.value = { x: e.clientX, y: e.clientY }
+  contextMenuVisible.value = true
+}
+
+async function handleMenuAction(action: string) {
+  contextMenuVisible.value = false
+  if (!selectedLand.value || !currentAccountId.value)
+    return
+
+  const landId = selectedLand.value.id
+
+  if (action === 'remove') {
+    confirmConfig.value = {
+      title: '确认铲除',
+      message: `确定要铲除土地 #${landId} 上的作物吗？`,
+      opType: 'remove_one',
+      options: { landId },
+    }
+    confirmVisible.value = true
+  }
+  else if (action === 'fertilize_organic') {
+    await farmStore.operate(currentAccountId.value, 'fertilize_one', {
+      landId,
+      fertilizerId: 1012, // 有机肥 ID
+    })
+  }
+  else if (action === 'plant') {
+    openSeedModal()
+  }
+}
+
+async function openSeedModal() {
+  if (!currentAccountId.value)
+    return
+  seedModalVisible.value = true
+  seedLoading.value = true
+  try {
+    bagSeeds.value = await farmStore.fetchBagSeeds(currentAccountId.value)
+  }
+  finally {
+    seedLoading.value = false
+  }
+}
+
+async function selectSeed(seed: any) {
+  if (!selectedLand.value || !currentAccountId.value)
+    return
+  seedModalVisible.value = false
+  await farmStore.operate(currentAccountId.value, 'plant_one', {
+    landId: selectedLand.value.id,
+    seedId: seed.id,
+  })
+}
+
+// 过滤种子
+const filteredSeeds = computed(() => {
+  if (!seedSearch.value)
+    return bagSeeds.value
+  const keyword = seedSearch.value.toLowerCase()
+  return bagSeeds.value.filter(s => (s.name || '').toLowerCase().includes(keyword))
 })
 
 async function executeOperate() {
@@ -30,7 +112,7 @@ async function executeOperate() {
   confirmVisible.value = false
   operating.value = true
   try {
-    await farmStore.operate(currentAccountId.value, confirmConfig.value.opType)
+    await farmStore.operate(currentAccountId.value, confirmConfig.value.opType, confirmConfig.value.options)
   }
   finally {
     operating.value = false
@@ -54,6 +136,7 @@ function handleOperate(opType: string) {
     title: '确认操作',
     message: confirmMap[opType] || '确定执行此操作吗？',
     opType,
+    options: null,
   }
   confirmVisible.value = true
 }
@@ -291,6 +374,7 @@ onUnmounted(() => {
             v-for="land in displayLands"
             :key="land.id"
             :class="getLandWrapperClass(land)"
+            @contextmenu.prevent="showContextMenu($event, land)"
           >
             <LandCard :land="land" />
           </div>
@@ -305,5 +389,97 @@ onUnmounted(() => {
       @confirm="executeOperate"
       @cancel="confirmVisible = false"
     />
+
+    <!-- Context Menu -->
+    <div
+      v-if="contextMenuVisible"
+      ref="contextMenu"
+      class="fixed z-50 min-w-[140px] overflow-hidden rounded-md bg-white shadow-xl ring-1 ring-black ring-opacity-5 dark:bg-gray-800 dark:ring-white dark:ring-opacity-10"
+      :style="{ top: `${contextMenuPosition.y}px`, left: `${contextMenuPosition.x}px` }"
+    >
+      <div class="py-1">
+        <button
+          class="block w-full flex items-center gap-2 px-4 py-2 text-left text-sm text-gray-700 hover:bg-gray-100 dark:text-gray-200 dark:hover:bg-gray-700"
+          @click="handleMenuAction('plant')"
+        >
+          <div class="i-carbon-sprout text-green-500" />
+          种植指定种子
+        </button>
+        <button
+          class="block w-full flex items-center gap-2 px-4 py-2 text-left text-sm text-gray-700 hover:bg-gray-100 dark:text-gray-200 dark:hover:bg-gray-700"
+          @click="handleMenuAction('fertilize_organic')"
+        >
+          <div class="i-carbon-chemistry text-amber-500" />
+          施加有机肥
+        </button>
+        <div class="my-1 border-t border-gray-100 dark:border-gray-700" />
+        <button
+          class="block w-full flex items-center gap-2 px-4 py-2 text-left text-sm text-red-600 hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-900/30"
+          @click="handleMenuAction('remove')"
+        >
+          <div class="i-carbon-trash-can" />
+          铲除作物
+        </button>
+      </div>
+    </div>
+
+    <!-- Seed Selection Modal -->
+    <div v-if="seedModalVisible" class="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 backdrop-blur-sm" @click="seedModalVisible = false">
+      <div class="max-h-[80vh] max-w-lg w-full flex flex-col transform rounded-xl bg-white p-6 shadow-2xl transition-all dark:bg-gray-800" @click.stop>
+        <div class="mb-4 flex items-center justify-between">
+          <h3 class="flex items-center gap-2 text-xl font-bold dark:text-gray-100">
+            <div class="i-carbon-sprout text-green-600" />
+            选择种子
+          </h3>
+          <button class="text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200" @click="seedModalVisible = false">
+            <div class="i-carbon-close text-xl" />
+          </button>
+        </div>
+
+        <div class="relative mb-4">
+          <div class="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3">
+            <div class="i-carbon-search text-gray-400" />
+          </div>
+          <input
+            v-model="seedSearch"
+            type="text"
+            placeholder="搜索种子名称..."
+            class="w-full border border-gray-300 rounded-lg bg-gray-50 p-2.5 pl-10 text-sm text-gray-900 dark:border-gray-600 focus:border-blue-500 dark:bg-gray-700 dark:text-white focus:ring-blue-500 dark:focus:border-blue-500 dark:focus:ring-blue-500 dark:placeholder-gray-400"
+          >
+        </div>
+
+        <div class="custom-scrollbar min-h-[300px] flex-1 overflow-y-auto pr-1 -mr-1">
+          <div v-if="seedLoading" class="h-full flex flex-col items-center justify-center py-12">
+            <div class="i-svg-spinners-90-ring-with-bg mb-2 text-4xl text-blue-500" />
+            <span class="text-gray-500">加载背包中...</span>
+          </div>
+          <div v-else-if="filteredSeeds.length === 0" class="h-full flex flex-col items-center justify-center py-12 text-gray-500">
+            <div class="i-carbon-catalog mb-2 text-4xl text-gray-300" />
+            <span>{{ seedSearch ? '未找到匹配的种子' : '背包中没有种子' }}</span>
+          </div>
+          <div v-else class="grid grid-cols-2 gap-3 pb-2 sm:grid-cols-3">
+            <button
+              v-for="seed in filteredSeeds"
+              :key="seed.id"
+              class="group relative flex flex-col items-center gap-2 border border-gray-200 rounded-lg p-3 text-center transition dark:border-gray-700 hover:border-blue-500 dark:bg-gray-800 hover:bg-blue-50 hover:shadow-md dark:hover:border-blue-500 dark:hover:bg-blue-900/20"
+              @click="selectSeed(seed)"
+            >
+              <div class="h-14 w-14 flex items-center justify-center rounded-full bg-gray-100 p-1 transition-transform group-hover:scale-110 dark:bg-gray-700">
+                <img v-if="seed.seedImage" :src="seed.seedImage" class="max-h-full max-w-full object-contain">
+                <div v-else class="i-carbon-sprout text-3xl text-green-500" />
+              </div>
+              <div class="w-full">
+                <div class="truncate text-sm text-gray-900 font-medium dark:text-gray-100" :title="seed.name">
+                  {{ seed.name }}
+                </div>
+                <div class="mt-1 inline-block rounded bg-gray-100 px-2 py-0.5 text-xs text-gray-500 dark:bg-gray-700 dark:text-gray-400">
+                  数量: {{ seed.amount || seed.count }}
+                </div>
+              </div>
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
   </div>
 </template>

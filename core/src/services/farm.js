@@ -2023,6 +2023,65 @@ async function runFarmOperation(opType, options = {}) {
     }
   }
 
+  // 单块土地操作
+  if (opType === 'remove_one') {
+    const { landId } = options
+    if (landId) {
+      try {
+        const id = toNum(landId)
+        await removePlant([id])
+        actions.push(`铲除#${id}`)
+        log('铲除', `铲除土地#${id}成功`, {
+          module: 'farm',
+          event: 'remove_plant',
+          landId: id,
+        })
+      } catch (e) {
+        logWarn('铲除', `铲除土地#${landId}失败: ${e.message}`)
+      }
+    }
+  }
+
+  if (opType === 'plant_one') {
+    const { landId, seedId } = options
+    if (landId && seedId) {
+      try {
+        const id = toNum(landId)
+        const seed = toNum(seedId)
+        await plantSeeds(seed, [id])
+        actions.push(`种植#${id}`)
+        log('种植', `种植土地#${id}成功(种子:${seed})`, {
+          module: 'farm',
+          event: 'plant_seed',
+          landId: id,
+          seedId: seed,
+        })
+      } catch (e) {
+        logWarn('种植', `种植土地#${landId}失败: ${e.message}`)
+      }
+    }
+  }
+
+  if (opType === 'fertilize_one') {
+    const { landId, fertilizerId } = options
+    if (landId && fertilizerId) {
+      try {
+        const id = toNum(landId)
+        const fid = toNum(fertilizerId)
+        await fertilize([id], fid)
+        actions.push(`施肥#${id}`)
+        log('施肥', `施肥土地#${id}成功(化肥:${fid})`, {
+          module: 'farm',
+          event: 'fertilize',
+          landId: id,
+          fertilizerId: fid,
+        })
+      } catch (e) {
+        logWarn('施肥', `施肥土地#${landId}失败: ${e.message}`)
+      }
+    }
+  }
+
   // 日志
   const actionStr = actions.length > 0 ? ` → ${actions.join('/')}` : ''
   if (actions.length > 0) {

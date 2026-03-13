@@ -49,14 +49,23 @@ export const useFarmStore = defineStore('farm', () => {
       seeds.value = data.data || []
   }
 
-  async function operate(accountId: string, opType: string) {
+  async function operate(accountId: string, opType: string, options?: any) {
     if (!accountId)
       return
-    await api.post('/api/farm/operate', { opType }, {
+    await api.post('/api/farm/operate', { opType, ...(options || {}) }, {
       headers: { 'x-account-id': accountId },
     })
     await fetchLands(accountId)
   }
 
-  return { lands, summary, seeds, loading, fetchLands, fetchSeeds, operate }
+  async function fetchBagSeeds(accountId: string) {
+    if (!accountId)
+      return []
+    const { data } = await api.get('/api/bag/seeds', {
+      headers: { 'x-account-id': accountId },
+    })
+    return (data && data.ok) ? (data.data || []) : []
+  }
+
+  return { lands, summary, seeds, loading, fetchLands, fetchSeeds, operate, fetchBagSeeds }
 })
