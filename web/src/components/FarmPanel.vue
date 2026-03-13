@@ -47,6 +47,7 @@ function handleOperate(opType: string) {
     plant: '确定要一键种植吗？(根据策略配置)',
     upgrade: '确定要升级所有可升级的土地吗？(消耗金币)',
     all: '确定要一键全收吗？(包含收获、除草、种植等)',
+    ripen: '确定要一键催熟吗？(优先普通肥，催熟后自动收获并按策略种植)',
   }
 
   confirmConfig.value = {
@@ -59,6 +60,7 @@ function handleOperate(opType: string) {
 
 const operations = [
   { type: 'harvest', label: '收获', icon: 'i-carbon-wheat', color: 'bg-blue-600 hover:bg-blue-700' },
+  { type: 'ripen', label: '催熟', icon: 'i-carbon-chemistry', color: 'bg-amber-600 hover:bg-amber-700' },
   { type: 'clear', label: '除草/虫', icon: 'i-carbon-clean', color: 'bg-teal-600 hover:bg-teal-700' },
   { type: 'plant', label: '种植', icon: 'i-carbon-sprout', color: 'bg-green-600 hover:bg-green-700' },
   { type: 'upgrade', label: '升级土地', icon: 'i-carbon-upgrade', color: 'bg-purple-600 hover:bg-purple-700' },

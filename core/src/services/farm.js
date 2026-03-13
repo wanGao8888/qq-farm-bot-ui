@@ -1765,7 +1765,7 @@ async function checkFarm() {
 
 /**
  * 手动/自动执行农场操作
- * @param {string} opType - 'all', 'harvest', 'clear', 'plant', 'upgrade'
+ * @param {string} opType - 'all', 'harvest', 'clear', 'plant', 'upgrade', 'ripen'
  */
 async function runFarmOperation(opType, options = {}) {
   const isAutomated = !!options.automated
@@ -1797,6 +1797,7 @@ async function runFarmOperation(opType, options = {}) {
 
   const actions = []
   const optimizer = getFarmOptimizer()
+  let operationStatus = status
 
   // 执行除草/虫/水 (使用并发控制)
   if (opType === 'all' || opType === 'clear') {
@@ -1850,27 +1851,58 @@ async function runFarmOperation(opType, options = {}) {
     }
   }
 
+  if (opType === 'ripen') {
+    const ripenTargets = [...new Set(status.growing)]
+    if (ripenTargets.length > 0) {
+      let ripenedNormal = 0
+      let ripenedOrganic = 0
+      ripenedNormal = await fertilize(ripenTargets, NORMAL_FERTILIZER_ID)
+      const remainingTargets = ripenTargets.slice(ripenedNormal)
+      if (remainingTargets.length > 0)
+        ripenedOrganic = await fertilize(
+          remainingTargets,
+          ORGANIC_FERTILIZER_ID,
+        )
+      const ripenedCount = ripenedNormal + ripenedOrganic
+      if (ripenedCount > 0) {
+        actions.push(`催熟${ripenedCount}`)
+        recordOperation('fertilize', ripenedCount)
+      }
+    }
+    try {
+      const refreshedReply = await getAllLands()
+      if (Array.isArray(refreshedReply && refreshedReply.lands))
+        operationStatus = analyzeLands(refreshedReply.lands)
+    } catch (e) {
+      logWarn('催熟', `刷新土地状态失败: ${e.message}`, {
+        module: 'farm',
+        event: 'fertilize',
+        result: 'error',
+      })
+    }
+  }
+
   // 执行收获
   let harvestedLandIds = []
   let harvestReply = null
   let postHarvest = null
-  if (opType === 'all' || opType === 'harvest') {
-    if (status.harvestable.length > 0) {
+  if (opType === 'all' || opType === 'harvest' || opType === 'ripen') {
+    if (operationStatus.harvestable.length > 0) {
       try {
-        harvestReply = await harvest(status.harvestable)
-        log('收获', `收获完成 ${status.harvestable.length} 块土地`, {
+        harvestReply = await harvest(operationStatus.harvestable)
+        log('收获', `收获完成 ${operationStatus.harvestable.length} 块土地`, {
           module: 'farm',
           event: 'harvest_crop',
           result: 'ok',
-          count: status.harvestable.length,
-          landIds: [...status.harvestable],
+          count: operationStatus.harvestable.length,
+          landIds: [...operationStatus.harvestable],
         })
-        actions.push(`收获${status.harvestable.length}`)
-        recordOperation('harvest', status.harvestable.length)
-        harvestedLandIds = [...status.harvestable]
+        actions.push(`收获${operationStatus.harvestable.length}`)
+        recordOperation('harvest', operationStatus.harvestable.length)
+        harvestedLandIds = [...operationStatus.harvestable]
         networkEvents.emit('farmHarvested', {
-          count: status.harvestable.length,
-          landIds: [...status.harvestable],
+          count: operationStatus.harvestable.length,
+          landIds: [...operationStatus.harvestable],
           opType,
         })
       } catch (e) {
@@ -1884,11 +1916,14 @@ async function runFarmOperation(opType, options = {}) {
   }
 
   // 执行种植
-  if (opType === 'all' || opType === 'plant') {
-    const allEmptyLands = [...new Set(status.empty)]
-    let allDeadLands = [...new Set(status.dead)]
+  if (opType === 'all' || opType === 'plant' || opType === 'ripen') {
+    const allEmptyLands = [...new Set(operationStatus.empty)]
+    let allDeadLands = [...new Set(operationStatus.dead)]
 
-    if (opType === 'all' && harvestedLandIds.length > 0) {
+    if (
+      (opType === 'all' || opType === 'ripen') &&
+      harvestedLandIds.length > 0
+    ) {
       postHarvest = await resolveRemovableHarvestedLands(
         harvestedLandIds,
         harvestReply,
