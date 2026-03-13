@@ -1110,11 +1110,6 @@ async function autoPlantEmptyLands(deadLandIds, emptyLandIds) {
       await runFertilizerByConfig(pending)
       return
     }
-    const nonMutantSet = new Set(nonMutant)
-    const mutantLands = pending.filter((id) => !nonMutantSet.has(id))
-    if (mutantLands.length > 0) {
-      await runFertilizerByConfig(mutantLands)
-    }
     try {
       await removePlant(nonMutant)
       log(
