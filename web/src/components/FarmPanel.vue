@@ -73,18 +73,8 @@ const displayLands = computed(() => {
   if (width.value < 768)
     return list
 
-  const columns = width.value >= 1024 ? 6 : 4
-  const rows = Math.ceil(list.length / columns)
-  const ordered: any[] = []
-
-  // Convert source data into the same top-to-bottom, left-to-right order the CSS grid uses.
-  for (let row = 0; row < rows; row++) {
-    for (let col = 0; col < columns; col++) {
-      const index = col * rows + row
-      if (index < list.length)
-        ordered.push(list[index])
-    }
-  }
+  const columns = width.value >= 1024 ? 8 : 4
+  const ordered: any[] = list
 
   if (width.value < 1024)
     return ordered
@@ -294,7 +284,7 @@ onUnmounted(() => {
           暂无土地数据
         </div>
 
-        <div v-else class="grid grid-cols-2 gap-4 lg:grid-cols-6 md:grid-cols-4 sm:grid-cols-3">
+        <div v-else class="grid grid-cols-2 gap-4 lg:grid-cols-8 md:grid-cols-4 sm:grid-cols-3">
           <div
             v-for="land in displayLands"
             :key="land.id"
