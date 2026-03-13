@@ -33,7 +33,7 @@ const token = computed(() => {
   return localStorage.getItem('admin_token') || '未登录'
 })
 
-const copyToClipboard = (text: string) => {
+function copyToClipboard(text: string) {
   navigator.clipboard.writeText(text).then(() => {
     toast.success('复制成功')
   }).catch(() => {
@@ -628,7 +628,8 @@ const bagSeeds = ref<BagSeedItem[]>([])
 const bagSeedsLoading = ref(false)
 
 async function fetchBagSeeds() {
-  if (!currentAccountId.value) return
+  if (!currentAccountId.value)
+    return
   bagSeedsLoading.value = true
   try {
     const { data } = await api.get('/api/bag/seeds', {
@@ -656,13 +657,15 @@ const sortedBagSeeds = computed(() => {
   return [...bagSeeds.value].sort((a, b) => {
     const pa = priorityMap.has(a.seedId) ? priorityMap.get(a.seedId)! : Number.MAX_SAFE_INTEGER
     const pb = priorityMap.has(b.seedId) ? priorityMap.get(b.seedId)! : Number.MAX_SAFE_INTEGER
-    if (pa !== pb) return pa - pb
+    if (pa !== pb)
+      return pa - pb
     return b.requiredLevel - a.requiredLevel
   })
 })
 
 function moveSeedUp(index: number) {
-  if (index <= 0) return
+  if (index <= 0)
+    return
   const seeds = sortedBagSeeds.value
   const newPriority: number[] = seeds.map(s => s.seedId)
   const a = newPriority[index]!
@@ -674,7 +677,8 @@ function moveSeedUp(index: number) {
 
 function moveSeedDown(index: number) {
   const seeds = sortedBagSeeds.value
-  if (index >= seeds.length - 1) return
+  if (index >= seeds.length - 1)
+    return
   const newPriority: number[] = seeds.map(s => s.seedId)
   const a = newPriority[index]!
   const b = newPriority[index + 1]!
@@ -910,8 +914,6 @@ async function handleTestOffline() {
     </div>
 
     <div v-else class="grid grid-cols-1 mt-12 gap-4 text-sm lg:grid-cols-2">
-
-
       <!-- Card 1: Strategy & Automation -->
       <div v-if="currentAccountId" class="card h-full flex flex-col rounded-lg bg-white shadow dark:bg-gray-800">
         <!-- Strategy Header -->
@@ -953,17 +955,17 @@ async function handleTestOffline() {
 
           <!-- 背包种子优先级列表 -->
           <div v-if="localSettings.plantingStrategy === 'bag_priority'" class="mt-3">
-            <div class="flex items-center justify-between mb-2">
+            <div class="mb-2 flex items-center justify-between">
               <label class="text-sm text-gray-700 font-medium dark:text-gray-300">背包种子优先级</label>
               <div class="flex items-center gap-2">
                 <button
-                  class="text-xs text-blue-500 hover:text-blue-600 dark:text-blue-400"
+                  class="text-xs text-blue-500 dark:text-blue-400 hover:text-blue-600"
                   @click="fetchBagSeeds"
                 >
                   刷新
                 </button>
                 <button
-                  class="text-xs text-gray-500 hover:text-gray-600 dark:text-gray-400"
+                  class="text-xs text-gray-500 dark:text-gray-400 hover:text-gray-600"
                   @click="resetBagSeedPriority"
                 >
                   重置排序
@@ -971,18 +973,18 @@ async function handleTestOffline() {
               </div>
             </div>
 
-            <div v-if="bagSeedsLoading" class="text-center py-4 text-gray-500">
+            <div v-if="bagSeedsLoading" class="py-4 text-center text-gray-500">
               加载中...
             </div>
-            <div v-else-if="sortedBagSeeds.length === 0" class="text-center py-4 text-gray-500 dark:text-gray-400">
+            <div v-else-if="sortedBagSeeds.length === 0" class="py-4 text-center text-gray-500 dark:text-gray-400">
               背包中暂无种子
             </div>
-            <div v-else class="space-y-1 max-h-64 overflow-y-auto">
+            <div v-else class="max-h-64 overflow-y-auto space-y-1">
               <div
                 v-for="(seed, index) in sortedBagSeeds"
                 :key="seed.seedId"
                 draggable="true"
-                class="flex items-center gap-3 p-2 border rounded-lg cursor-grab select-none border-gray-200 bg-gray-50 dark:border-gray-600 dark:bg-gray-800/50"
+                class="flex cursor-grab select-none items-center gap-3 border border-gray-200 rounded-lg bg-gray-50 p-2 dark:border-gray-600 dark:bg-gray-800/50"
                 @dragstart="onDragStart($event, index)"
                 @dragover="onDragOver"
                 @drop="onDrop(index)"
@@ -996,16 +998,16 @@ async function handleTestOffline() {
                   v-if="seed.image"
                   :src="seed.image"
                   :alt="seed.name"
-                  class="w-8 h-8 object-contain pointer-events-none"
+                  class="pointer-events-none h-8 w-8 object-contain"
                 >
-                <div v-else class="w-8 h-8 bg-gray-200 rounded dark:bg-gray-700 pointer-events-none" />
-                <div class="flex-1 min-w-0 pointer-events-none">
+                <div v-else class="pointer-events-none h-8 w-8 rounded bg-gray-200 dark:bg-gray-700" />
+                <div class="pointer-events-none min-w-0 flex-1">
                   <div class="flex items-center gap-2">
                     <span
                       v-if="seed.requiredLevel >= 200"
-                      class="px-1.5 py-0.5 text-xs bg-yellow-100 text-yellow-700 rounded dark:bg-yellow-900/50 dark:text-yellow-400"
+                      class="rounded bg-yellow-100 px-1.5 py-0.5 text-xs text-yellow-700 dark:bg-yellow-900/50 dark:text-yellow-400"
                     >活动</span>
-                    <span class="text-sm font-medium text-gray-800 dark:text-gray-200 truncate">{{ seed.name }}</span>
+                    <span class="truncate text-sm text-gray-800 font-medium dark:text-gray-200">{{ seed.name }}</span>
                   </div>
                   <div class="text-xs text-gray-500 dark:text-gray-400">
                     数量: {{ seed.count }} | {{ seed.requiredLevel >= 200 ? '活动种子' : `${seed.requiredLevel}级` }}
@@ -1014,14 +1016,14 @@ async function handleTestOffline() {
                 </div>
                 <div class="flex flex-col gap-1">
                   <button
-                    class="p-1 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 disabled:opacity-30"
+                    class="p-1 text-gray-400 hover:text-gray-600 disabled:opacity-30 dark:hover:text-gray-300"
                     :disabled="index === 0"
                     @click.stop="moveSeedUp(index)"
                   >
                     <div class="i-carbon-chevron-up" />
                   </button>
                   <button
-                    class="p-1 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 disabled:opacity-30"
+                    class="p-1 text-gray-400 hover:text-gray-600 disabled:opacity-30 dark:hover:text-gray-300"
                     :disabled="index === sortedBagSeeds.length - 1"
                     @click.stop="moveSeedDown(index)"
                   >
@@ -1030,7 +1032,7 @@ async function handleTestOffline() {
                 </div>
               </div>
             </div>
-            <div class="mt-2 text-xs text-gray-500 dark:text-gray-400 space-y-1">
+            <div class="mt-2 text-xs text-gray-500 space-y-1 dark:text-gray-400">
               <p>* 拖拽或点击箭头调整种植优先级</p>
               <p>* 仅支持 1x1 种子，2x2 及以上种子会被跳过</p>
               <p>* 1x1 种子用完后将自动切换为"最高等级"策略</p>
@@ -1604,15 +1606,15 @@ async function handleTestOffline() {
               type="text"
               :value="token"
               readonly
-              class="flex-1 rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-900 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100"
-            />
+              class="flex-1 border border-gray-200 rounded-lg bg-white px-3 py-2 text-sm text-gray-900 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100"
+            >
             <BaseButton
               v-if="token !== '未登录'"
               variant="secondary"
               size="sm"
               @click="copyToClipboard(token)"
             >
-              <div class="i-carbon-copy mr-1"></div>
+              <div class="i-carbon-copy mr-1" />
               复制
             </BaseButton>
           </div>

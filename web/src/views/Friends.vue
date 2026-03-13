@@ -135,7 +135,6 @@ async function handleImportGids() {
   }, 3000)
 }
 
-
 useIntervalFn(() => {
   for (const gid in friendLands.value) {
     if (friendLands.value[gid]) {
@@ -179,6 +178,17 @@ async function handleOp(friendId: string, type: string, e: Event) {
   confirmAction('确定执行此操作吗?', async () => {
     await friendStore.operate(currentAccountId.value!, friendId, type)
   })
+}
+
+async function handleRefreshFriend(friendId: string, e: Event) {
+  e.stopPropagation()
+  if (!currentAccountId.value)
+    return
+  if (!expandedFriends.value.has(friendId)) {
+    expandedFriends.value.clear()
+    expandedFriends.value.add(friendId)
+  }
+  await friendStore.fetchFriendLands(currentAccountId.value, friendId)
 }
 
 async function handleToggleBlacklist(friend: any, e: Event) {
@@ -555,6 +565,13 @@ function formatInteractTime(timestamp: number) {
                   偷取
                 </button>
                 <button
+                  class="rounded bg-gray-100 px-3 py-2 text-sm text-gray-600 transition disabled:cursor-not-allowed dark:bg-gray-700 hover:bg-gray-200 dark:text-gray-300 disabled:opacity-60 dark:hover:bg-gray-600"
+                  :disabled="friendLandsLoading[friend.gid]"
+                  @click="handleRefreshFriend(friend.gid, $event)"
+                >
+                  {{ friendLandsLoading[friend.gid] ? '刷新中...' : '刷新' }}
+                </button>
+                <button
                   class="rounded bg-cyan-100 px-3 py-2 text-sm text-cyan-700 transition hover:bg-cyan-200"
                   @click="handleOp(friend.gid, 'water', $event)"
                 >
@@ -664,6 +681,13 @@ function formatInteractTime(timestamp: number) {
                   偷取
                 </button>
                 <button
+                  class="rounded bg-gray-200 px-3 py-2 text-sm text-gray-600 transition disabled:cursor-not-allowed dark:bg-gray-700 hover:bg-gray-300 dark:text-gray-300 disabled:opacity-60 dark:hover:bg-gray-600"
+                  :disabled="friendLandsLoading[friend.gid]"
+                  @click="handleRefreshFriend(friend.gid, $event)"
+                >
+                  {{ friendLandsLoading[friend.gid] ? '刷新中...' : '刷新' }}
+                </button>
+                <button
                   class="rounded bg-cyan-100 px-3 py-2 text-sm text-cyan-700 transition hover:bg-cyan-200"
                   @click="handleOp(friend.gid, 'water', $event)"
                 >
@@ -731,8 +755,8 @@ function formatInteractTime(timestamp: number) {
       class="fixed inset-0 z-50 flex items-center justify-center bg-black/50"
       @click.self="showImportGidModal = false"
     >
-      <div class="mx-4 w-full max-w-md rounded-lg bg-white p-6 shadow-xl dark:bg-gray-800">
-        <h3 class="mb-4 text-lg font-semibold text-gray-800 dark:text-gray-100">
+      <div class="mx-4 max-w-md w-full rounded-lg bg-white p-6 shadow-xl dark:bg-gray-800">
+        <h3 class="mb-4 text-lg text-gray-800 font-semibold dark:text-gray-100">
           导入好友 GID
         </h3>
         <p class="mb-3 text-sm text-gray-500 dark:text-gray-400">
