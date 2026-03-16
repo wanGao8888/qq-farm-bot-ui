@@ -155,6 +155,17 @@ const NORMAL_FERTILIZER_ID = 1011
 // 有机肥料 ID
 const ORGANIC_FERTILIZER_ID = 1012
 
+function isFertilizerExhaustedError(err) {
+  const msg = String((err && err.message) || '')
+  return (
+    msg.includes('化肥不足') ||
+    msg.includes('有机化肥不足') ||
+    msg.includes('剩余肥料不足') ||
+    msg.includes('肥料不足') ||
+    msg.includes('code=1003001')
+  )
+}
+
 /**
  * 施肥 - 必须逐块进行，服务器不支持批量
  * 游戏中拖动施肥间隔很短，这里用 50ms
@@ -171,9 +182,12 @@ async function fertilize(landIds, fertilizerId = NORMAL_FERTILIZER_ID) {
       ).finish()
       await sendMsgAsync('gamepb.plantpb.PlantService', 'Fertilize', body)
       successCount++
-    } catch {
-      // 施肥失败（可能肥料不足），停止继续
-      break
+    } catch (e) {
+      if (isFertilizerExhaustedError(e)) {
+        break
+      }
+      logWarn('施肥', `土地#${landId}施肥失败: ${e.message}`)
+      continue
     }
     if (landIds.length > 1) await sleep(50) // 50ms 间隔
   }

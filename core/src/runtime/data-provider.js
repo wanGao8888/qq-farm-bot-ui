@@ -123,7 +123,7 @@ function createDataProvider(options) {
             return { automation: store.getAutomation(accountId), configRevision: rev };
         },
 
-        doFarmOp: (accountRef, opType) => callWorkerApi(resolveAccountRefId(accountRef), 'doFarmOp', opType),
+        doFarmOp: (accountRef, opType, options) => callWorkerApi(resolveAccountRefId(accountRef), 'doFarmOp', opType, options),
         doAnalytics: (accountRef, sortBy) => callWorkerApi(resolveAccountRefId(accountRef), 'getAnalytics', sortBy),
         saveSettings: async (accountRef, payload) => {
             const accountId = resolveAccountRefId(accountRef);

@@ -539,8 +539,8 @@ function startAdminServer(dataProvider) {
         const id = getAccId(req);
         if (!id) return res.status(400).json({ ok: false });
         try {
-            const { opType } = req.body; // 'harvest', 'clear', 'plant', 'all'
-            await provider.doFarmOp(id, opType);
+            const { opType, ...options } = req.body || {};
+            await provider.doFarmOp(id, opType, options);
             res.json({ ok: true });
         } catch (e) {
             handleApiError(res, e);
