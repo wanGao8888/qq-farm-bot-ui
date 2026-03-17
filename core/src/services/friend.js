@@ -37,6 +37,7 @@ const {
   setOperationLimitsCallback,
   buildLandMap,
   getDisplayLandContext,
+  getMutantCounts,
   getMutantFlag,
   isOccupiedSlaveLand,
 } = require('./farm')
@@ -1002,7 +1003,13 @@ async function getFriendLandsDetail(friendGid) {
       const currentSeason =
         currentSeasonRaw > 0 ? Math.min(currentSeasonRaw, totalSeason) : 1
       const phaseName = PHASE_NAMES[phaseVal] || ''
-      const mutantFlag = getMutantFlag(plant, currentPhase)
+      const mutantCounts = getMutantCounts(plant, currentPhase)
+      const mutantFlag =
+        mutantCounts.current > 0
+          ? 'current'
+          : mutantCounts.potential > 0
+            ? 'potential'
+            : ''
       const maturePhase = Array.isArray(plant.phases)
         ? plant.phases.find((p) => p && toNum(p.phase) === PlantPhase.MATURE)
         : null
@@ -1022,6 +1029,8 @@ async function getFriendLandsDetail(friendGid) {
         seedImage,
         phaseName,
         mutantFlag,
+        mutantCurrentCount: mutantCounts.current,
+        mutantPotentialCount: mutantCounts.potential,
         level,
         currentSeason,
         totalSeason,

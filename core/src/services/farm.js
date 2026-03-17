@@ -960,7 +960,13 @@ async function getLandsDetail() {
       const currentSeason =
         currentSeasonRaw > 0 ? Math.min(currentSeasonRaw, totalSeason) : 1
       const phaseName = PHASE_NAMES[phaseVal] || ''
-      const mutantFlag = getMutantFlag(plant, currentPhase)
+      const mutantCounts = getMutantCounts(plant, currentPhase)
+      const mutantFlag =
+        mutantCounts.current > 0
+          ? 'current'
+          : mutantCounts.potential > 0
+            ? 'potential'
+            : ''
       const maturePhase = Array.isArray(plant.phases)
         ? plant.phases.find((p) => p && toNum(p.phase) === PlantPhase.MATURE)
         : null
@@ -995,6 +1001,8 @@ async function getLandsDetail() {
         seedImage,
         phaseName,
         mutantFlag,
+        mutantCurrentCount: mutantCounts.current,
+        mutantPotentialCount: mutantCounts.potential,
         currentSeason,
         totalSeason,
         matureInSec,
@@ -1524,39 +1532,53 @@ function getCurrentPhase(phases, debug, landLabel) {
   return phases[0]
 }
 
-function getMutantFlag(plant, currentPhase) {
+function getMutantCounts(plant, currentPhase) {
   if (
     !plant ||
     !Array.isArray(plant.phases) ||
     plant.phases.length === 0 ||
     !currentPhase
   )
-    return ''
+    return { current: 0, potential: 0 }
 
   const phases = plant.phases
-  const hasPhaseMutant = (phase) => {
+  const getPhaseMutantCount = (phase) => {
     if (!phase) return false
-    if (Array.isArray(phase.mutants) && phase.mutants.length > 0) return true
-    if (
-      Array.isArray(phase.mutant_config_ids) &&
-      phase.mutant_config_ids.length > 0
-    )
-      return true
+    const mutantsCount = Array.isArray(phase.mutants) ? phase.mutants.length : 0
+    const configIdsCount = Array.isArray(phase.mutant_config_ids)
+      ? phase.mutant_config_ids.length
+      : 0
     const singleId = toNum(phase.mutant_config_id)
-    if (singleId > 0) return true
-    return false
+    const singleCount = singleId > 0 ? 1 : 0
+    return Math.max(mutantsCount, configIdsCount, singleCount)
   }
 
   const currentIndex = phases.indexOf(currentPhase)
   const idx = currentIndex >= 0 ? currentIndex : 0
+  let current = 0
+  let potential = 0
+
   for (let i = 0; i <= idx && i < phases.length; i++) {
-    if (hasPhaseMutant(phases[i])) return 'current'
+    current += getPhaseMutantCount(phases[i])
   }
   for (let i = idx + 1; i < phases.length; i++) {
-    if (hasPhaseMutant(phases[i])) return 'potential'
+    potential += getPhaseMutantCount(phases[i])
   }
-  if (Array.isArray(plant.mutant_config_ids) && plant.mutant_config_ids.length)
-    return 'current'
+
+  if (
+    Array.isArray(plant.mutant_config_ids) &&
+    plant.mutant_config_ids.length
+  ) {
+    current = Math.max(current, plant.mutant_config_ids.length)
+  }
+
+  return { current, potential }
+}
+
+function getMutantFlag(plant, currentPhase) {
+  const counts = getMutantCounts(plant, currentPhase)
+  if (counts.current > 0) return 'current'
+  if (counts.potential > 0) return 'potential'
   return ''
 }
 
@@ -1777,6 +1799,23 @@ async function checkFarm() {
  * @param {string} opType - 'all', 'harvest', 'clear', 'plant', 'upgrade', 'ripen'
  */
 async function runFarmOperation(opType, options = {}) {
+  const normalizedOptions =
+    options && typeof options === 'object' ? options : {}
+  const singleLandId = toNum(
+    normalizedOptions.landId ??
+      normalizedOptions.land_id ??
+      normalizedOptions.id,
+  )
+  const singleSeedId = toNum(
+    normalizedOptions.seedId ??
+      normalizedOptions.seed_id ??
+      normalizedOptions.seed,
+  )
+  const singleFertilizerId = toNum(
+    normalizedOptions.fertilizerId ??
+      normalizedOptions.fertilizer_id ??
+      normalizedOptions.fertilizer,
+  )
   const isAutomated = !!options.automated
   const landsReply = await getAllLands()
   if (!landsReply.lands || landsReply.lands.length === 0) {
@@ -2039,10 +2078,9 @@ async function runFarmOperation(opType, options = {}) {
 
   // 单块土地操作
   if (opType === 'remove_one') {
-    const { landId } = options
-    if (landId) {
+    if (singleLandId > 0) {
       try {
-        const id = toNum(landId)
+        const id = singleLandId
         await removePlant([id])
         actions.push(`铲除#${id}`)
         log('铲除', `铲除土地#${id}成功`, {
@@ -2051,17 +2089,16 @@ async function runFarmOperation(opType, options = {}) {
           landId: id,
         })
       } catch (e) {
-        logWarn('铲除', `铲除土地#${landId}失败: ${e.message}`)
+        logWarn('铲除', `铲除土地#${singleLandId}失败: ${e.message}`)
       }
     }
   }
 
   if (opType === 'plant_one') {
-    const { landId, seedId } = options
-    if (landId && seedId) {
+    if (singleLandId > 0 && singleSeedId > 0) {
       try {
-        const id = toNum(landId)
-        const seed = toNum(seedId)
+        const id = singleLandId
+        const seed = singleSeedId
         await plantSeeds(seed, [id])
         actions.push(`种植#${id}`)
         log('种植', `种植土地#${id}成功(种子:${seed})`, {
@@ -2071,27 +2108,30 @@ async function runFarmOperation(opType, options = {}) {
           seedId: seed,
         })
       } catch (e) {
-        logWarn('种植', `种植土地#${landId}失败: ${e.message}`)
+        logWarn('种植', `种植土地#${singleLandId}失败: ${e.message}`)
       }
     }
   }
 
   if (opType === 'fertilize_one') {
-    const { landId, fertilizerId } = options
-    if (landId && fertilizerId) {
+    if (singleLandId > 0 && singleFertilizerId > 0) {
       try {
-        const id = toNum(landId)
-        const fid = toNum(fertilizerId)
-        await fertilize([id], fid)
-        actions.push(`施肥#${id}`)
-        log('施肥', `施肥土地#${id}成功(化肥:${fid})`, {
-          module: 'farm',
-          event: 'fertilize',
-          landId: id,
-          fertilizerId: fid,
-        })
+        const id = singleLandId
+        const fid = singleFertilizerId
+        const count = await fertilize([id], fid)
+        if (count > 0) {
+          actions.push(`施肥#${id}`)
+          log('施肥', `施肥土地#${id}成功(化肥:${fid})`, {
+            module: 'farm',
+            event: 'fertilize',
+            landId: id,
+            fertilizerId: fid,
+          })
+        } else {
+          logWarn('施肥', `施肥土地#${id}失败: 肥料不足或无法施肥`)
+        }
       } catch (e) {
-        logWarn('施肥', `施肥土地#${landId}失败: ${e.message}`)
+        logWarn('施肥', `施肥土地#${singleLandId}失败: ${e.message}`)
       }
     }
   }
@@ -2180,6 +2220,7 @@ module.exports = {
   runFertilizerByConfig,
   buildLandMap,
   getDisplayLandContext,
+  getMutantCounts,
   getMutantFlag,
   isOccupiedSlaveLand,
 }

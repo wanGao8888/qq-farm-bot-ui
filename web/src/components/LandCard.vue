@@ -7,6 +7,20 @@ const props = defineProps<{
 
 const land = computed(() => props.land)
 const isMergedCard = computed(() => !!land.value?.mergedCard)
+const mutantBadges = computed(() => {
+  const current = Number(
+    land.value?.mutantCurrentCount ?? land.value?.mutantCounts?.current ?? 0,
+  ) || 0
+  const potential = Number(
+    land.value?.mutantPotentialCount ?? land.value?.mutantCounts?.potential ?? 0,
+  ) || 0
+  const badges: Array<{ flag: string, count: number }> = []
+  if (current > 0)
+    badges.push({ flag: 'current', count: current })
+  if (potential > 0)
+    badges.push({ flag: 'potential', count: potential })
+  return badges
+})
 
 function getLandStatusClass(land: any) {
   const status = land.status
@@ -125,11 +139,12 @@ function getMutantBadgeClass(flag: string) {
 
     <div class="absolute right-1 top-1 flex flex-col items-end gap-1">
       <div
-        v-if="land.mutantFlag"
+        v-for="badge in mutantBadges"
+        :key="badge.flag"
         class="rounded px-1 py-0.5 text-[10px]"
-        :class="getMutantBadgeClass(land.mutantFlag)"
+        :class="getMutantBadgeClass(badge.flag)"
       >
-        {{ getMutantBadgeLabel(land.mutantFlag) }}
+        {{ getMutantBadgeLabel(badge.flag) }}{{ badge.count }}
       </div>
       <div
         v-if="land.plantSize > 1"
