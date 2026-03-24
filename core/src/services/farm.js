@@ -1003,6 +1003,8 @@ async function getLandsDetail() {
         mutantFlag,
         mutantCurrentCount: mutantCounts.current,
         mutantPotentialCount: mutantCounts.potential,
+        mutantCurrentTypeIds: [...mutantCounts.currentTypes],
+        mutantPotentialTypeIds: [...mutantCounts.potentialTypes],
         currentSeason,
         totalSeason,
         matureInSec,
@@ -1122,6 +1124,7 @@ async function autoPlantEmptyLands(deadLandIds, emptyLandIds) {
     ...new Set(landsToPlant.map((id) => toNum(id)).filter(Boolean)),
   ]
   if (pending.length === 0) return
+  const fertilizeTargets = [...pending]
 
   const maxRounds = 5
   for (let round = 1; round <= maxRounds && pending.length > 0; round++) {
@@ -1129,7 +1132,7 @@ async function autoPlantEmptyLands(deadLandIds, emptyLandIds) {
     await sleep(5000)
     const nonMutant = await getNonMutantLandIds(pending)
     if (nonMutant.length === 0) {
-      await runFertilizerByConfig(pending)
+      await runFertilizerByConfig(fertilizeTargets)
       return
     }
     try {
@@ -1539,9 +1542,37 @@ function getMutantCounts(plant, currentPhase) {
     plant.phases.length === 0 ||
     !currentPhase
   )
-    return { current: 0, potential: 0 }
+    return { current: 0, potential: 0, currentTypes: [], potentialTypes: [] }
 
   const phases = plant.phases
+  const addTypeId = (list, typeId) => {
+    const id = toNum(typeId)
+    if (id <= 0) return
+    if (list.includes(id)) return
+    list.push(id)
+  }
+  const getPhaseMutantTypeIds = (phase) => {
+    const ids = []
+    if (!phase) return ids
+
+    if (Array.isArray(phase.mutants)) {
+      for (const mutant of phase.mutants) {
+        const weatherId = toNum(mutant && mutant.weather_id)
+        const configId = toNum(mutant && mutant.mutant_config_id)
+        if (weatherId > 0) addTypeId(ids, weatherId)
+        else if (configId > 0) addTypeId(ids, configId)
+      }
+    }
+
+    if (Array.isArray(phase.mutant_config_ids)) {
+      for (const typeId of phase.mutant_config_ids) {
+        addTypeId(ids, typeId)
+      }
+    }
+
+    addTypeId(ids, phase.mutant_config_id)
+    return ids
+  }
   const getPhaseMutantCount = (phase) => {
     if (!phase) return false
     const mutantsCount = Array.isArray(phase.mutants) ? phase.mutants.length : 0
@@ -1557,22 +1588,37 @@ function getMutantCounts(plant, currentPhase) {
   const idx = currentIndex >= 0 ? currentIndex : 0
   let current = 0
   let potential = 0
+  const currentTypes = []
+  const potentialTypes = []
 
   for (let i = 0; i <= idx && i < phases.length; i++) {
     current += getPhaseMutantCount(phases[i])
+    const phaseTypeIds = getPhaseMutantTypeIds(phases[i])
+    for (const typeId of phaseTypeIds) {
+      addTypeId(currentTypes, typeId)
+    }
   }
   for (let i = idx + 1; i < phases.length; i++) {
     potential += getPhaseMutantCount(phases[i])
+    const phaseTypeIds = getPhaseMutantTypeIds(phases[i])
+    for (const typeId of phaseTypeIds) {
+      addTypeId(potentialTypes, typeId)
+    }
   }
 
   if (
     Array.isArray(plant.mutant_config_ids) &&
     plant.mutant_config_ids.length
   ) {
-    current = Math.max(current, plant.mutant_config_ids.length)
+    if (current <= 0) {
+      potential = Math.max(potential, plant.mutant_config_ids.length)
+    }
+    for (const typeId of plant.mutant_config_ids) {
+      addTypeId(potentialTypes, typeId)
+    }
   }
 
-  return { current, potential }
+  return { current, potential, currentTypes, potentialTypes }
 }
 
 function getMutantFlag(plant, currentPhase) {

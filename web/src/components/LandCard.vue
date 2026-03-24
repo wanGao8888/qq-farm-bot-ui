@@ -5,8 +5,30 @@ const props = defineProps<{
   land: any
 }>()
 
+const MUTANT_TYPE_MAP: Record<number, string> = {
+  1: '冰冻',
+  2: '爱心',
+  3: '暗化',
+  4: '湿润',
+}
+
 const land = computed(() => props.land)
 const isMergedCard = computed(() => !!land.value?.mergedCard)
+
+function normalizeMutantTypeIds(input: unknown) {
+  const source = Array.isArray(input) ? input : []
+  const ids: number[] = []
+  for (const item of source) {
+    const id = Number(item) || 0
+    if (!id || !MUTANT_TYPE_MAP[id])
+      continue
+    if (ids.includes(id))
+      continue
+    ids.push(id)
+  }
+  return ids
+}
+
 const mutantBadges = computed(() => {
   const current = Number(
     land.value?.mutantCurrentCount ?? land.value?.mutantCounts?.current ?? 0,
@@ -14,11 +36,17 @@ const mutantBadges = computed(() => {
   const potential = Number(
     land.value?.mutantPotentialCount ?? land.value?.mutantCounts?.potential ?? 0,
   ) || 0
-  const badges: Array<{ flag: string, count: number }> = []
+  const currentTypeIds = normalizeMutantTypeIds(
+    land.value?.mutantCurrentTypeIds ?? land.value?.mutantTypes?.current,
+  )
+  const potentialTypeIds = normalizeMutantTypeIds(
+    land.value?.mutantPotentialTypeIds ?? land.value?.mutantTypes?.potential,
+  )
+  const badges: Array<{ flag: string, count: number, typeIds: number[] }> = []
   if (current > 0)
-    badges.push({ flag: 'current', count: current })
+    badges.push({ flag: 'current', count: current, typeIds: currentTypeIds })
   if (potential > 0)
-    badges.push({ flag: 'potential', count: potential })
+    badges.push({ flag: 'potential', count: potential, typeIds: potentialTypeIds })
   return badges
 })
 
@@ -94,12 +122,20 @@ function getPlantSizeText(land: any) {
   return `${size}x${size}`
 }
 
-function getMutantBadgeLabel(flag: string) {
-  if (flag === 'current')
-    return '现变'
-  if (flag === 'potential')
-    return '潜变'
-  return ''
+function getMutantBadgeLabel(flag: string, typeIds: number[]) {
+  const baseLabel = flag === 'current'
+    ? '现变'
+    : flag === 'potential'
+      ? '潜变'
+      : ''
+  if (!baseLabel)
+    return ''
+  const typeLabels = typeIds
+    .map(id => MUTANT_TYPE_MAP[id] || '')
+    .filter(Boolean)
+  if (!typeLabels.length)
+    return baseLabel
+  return `${baseLabel}${typeLabels.join('/')}`
 }
 
 function getMutantBadgeClass(flag: string) {
@@ -144,7 +180,7 @@ function getMutantBadgeClass(flag: string) {
         class="rounded px-1 py-0.5 text-[10px]"
         :class="getMutantBadgeClass(badge.flag)"
       >
-        {{ getMutantBadgeLabel(badge.flag) }}{{ badge.count }}
+        {{ getMutantBadgeLabel(badge.flag, badge.typeIds) }}{{ badge.count }}
       </div>
       <div
         v-if="land.plantSize > 1"

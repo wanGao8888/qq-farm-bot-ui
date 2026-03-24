@@ -38,7 +38,6 @@ const {
   buildLandMap,
   getDisplayLandContext,
   getMutantCounts,
-  getMutantFlag,
   isOccupiedSlaveLand,
 } = require('./farm')
 const { createScheduler } = require('./scheduler')
@@ -1031,6 +1030,8 @@ async function getFriendLandsDetail(friendGid) {
         mutantFlag,
         mutantCurrentCount: mutantCounts.current,
         mutantPotentialCount: mutantCounts.potential,
+        mutantCurrentTypeIds: [...mutantCounts.currentTypes],
+        mutantPotentialTypeIds: [...mutantCounts.potentialTypes],
         level,
         currentSeason,
         totalSeason,
