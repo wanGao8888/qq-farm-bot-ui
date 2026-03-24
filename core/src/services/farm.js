@@ -1126,7 +1126,7 @@ async function autoPlantEmptyLands(deadLandIds, emptyLandIds) {
   if (pending.length === 0) return
   const fertilizeTargets = [...pending]
 
-  const maxRounds = 5
+  const maxRounds = 10
   for (let round = 1; round <= maxRounds && pending.length > 0; round++) {
     await plantOnceByStrategy(pending, state, { skipFertilizer: true })
     await sleep(5000)
