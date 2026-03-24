@@ -1074,6 +1074,41 @@ async function getNonMutantLandIds(landIds) {
   return nonMutant
 }
 
+async function getCurrentMutantLandIds() {
+  let landsReply
+  try {
+    landsReply = await getAllLands()
+  } catch (e) {
+    logWarn('变异', `获取全场变异地块失败: ${e.message}`, {
+      module: 'farm',
+      event: 'mutant_check',
+      result: 'error',
+    })
+    return []
+  }
+  const lands = Array.isArray(landsReply && landsReply.lands)
+    ? landsReply.lands
+    : []
+  const landsMap = buildLandMap(lands)
+  const mutantLandIds = []
+  for (const land of lands) {
+    if (!land || !land.unlocked) continue
+    const landId = toNum(land.id)
+    if (!landId) continue
+    if (isOccupiedSlaveLand(land, landsMap)) continue
+    const plant = land.plant
+    if (!plant || !Array.isArray(plant.phases) || plant.phases.length === 0)
+      continue
+    const currentPhase = getCurrentPhase(plant.phases, false, '')
+    if (!currentPhase) continue
+    const mutantCounts = getMutantCounts(plant, currentPhase)
+    if (mutantCounts.current > 0) {
+      mutantLandIds.push(landId)
+    }
+  }
+  return [...new Set(mutantLandIds)]
+}
+
 async function plantOnceByStrategy(landsToPlant, state, options = {}) {
   const skipFertilizer = !!options.skipFertilizer
   const strategy = getPlantingStrategy()
@@ -1132,7 +1167,10 @@ async function autoPlantEmptyLands(deadLandIds, emptyLandIds) {
     await sleep(5000)
     const nonMutant = await getNonMutantLandIds(pending)
     if (nonMutant.length === 0) {
-      await runFertilizerByConfig(fertilizeTargets)
+      const globalMutantTargets = await getCurrentMutantLandIds()
+      const finalFertilizeTargets =
+        globalMutantTargets.length > 0 ? globalMutantTargets : fertilizeTargets
+      await runFertilizerByConfig(finalFertilizeTargets)
       return
     }
     try {
@@ -1545,43 +1583,18 @@ function getMutantCounts(plant, currentPhase) {
     return { current: 0, potential: 0, currentTypes: [], potentialTypes: [] }
 
   const phases = plant.phases
+  const nowSec = getServerTimeSec()
   const addTypeId = (list, typeId) => {
     const id = toNum(typeId)
     if (id <= 0) return
     if (list.includes(id)) return
     list.push(id)
   }
-  const getPhaseMutantTypeIds = (phase) => {
-    const ids = []
-    if (!phase) return ids
-
-    if (Array.isArray(phase.mutants)) {
-      for (const mutant of phase.mutants) {
-        const weatherId = toNum(mutant && mutant.weather_id)
-        const configId = toNum(mutant && mutant.mutant_config_id)
-        if (weatherId > 0) addTypeId(ids, weatherId)
-        else if (configId > 0) addTypeId(ids, configId)
-      }
-    }
-
-    if (Array.isArray(phase.mutant_config_ids)) {
-      for (const typeId of phase.mutant_config_ids) {
-        addTypeId(ids, typeId)
-      }
-    }
-
-    addTypeId(ids, phase.mutant_config_id)
-    return ids
-  }
-  const getPhaseMutantCount = (phase) => {
-    if (!phase) return false
-    const mutantsCount = Array.isArray(phase.mutants) ? phase.mutants.length : 0
-    const configIdsCount = Array.isArray(phase.mutant_config_ids)
-      ? phase.mutant_config_ids.length
-      : 0
-    const singleId = toNum(phase.mutant_config_id)
-    const singleCount = singleId > 0 ? 1 : 0
-    return Math.max(mutantsCount, configIdsCount, singleCount)
+  const getMutantTypeId = (mutant) => {
+    const weatherId = toNum(mutant && mutant.weather_id)
+    if (weatherId > 0) return weatherId
+    const configId = toNum(mutant && mutant.mutant_config_id)
+    return configId > 0 ? configId : 0
   }
 
   const currentIndex = phases.indexOf(currentPhase)
@@ -1590,31 +1603,60 @@ function getMutantCounts(plant, currentPhase) {
   let potential = 0
   const currentTypes = []
   const potentialTypes = []
+  const addMutant = (bucket, typeId) => {
+    const id = toNum(typeId)
+    if (id <= 0) return
+    if (bucket === 'current') {
+      current++
+      addTypeId(currentTypes, id)
+      return
+    }
+    potential++
+    addTypeId(potentialTypes, id)
+  }
+  const addPhaseMutants = (phase, defaultBucket) => {
+    if (!phase) return
+    const phaseMutants = Array.isArray(phase.mutants) ? phase.mutants : []
+    if (phaseMutants.length > 0) {
+      for (const mutant of phaseMutants) {
+        const typeId = getMutantTypeId(mutant)
+        if (typeId <= 0) continue
+        const mutantTime = toTimeSec(mutant && mutant.mutant_time)
+        if (mutantTime > 0) {
+          addMutant(mutantTime <= nowSec ? 'current' : 'potential', typeId)
+          continue
+        }
+        addMutant(defaultBucket, typeId)
+      }
+      return
+    }
+
+    if (Array.isArray(phase.mutant_config_ids)) {
+      for (const typeId of phase.mutant_config_ids) {
+        addMutant(defaultBucket, typeId)
+      }
+    }
+    addMutant(defaultBucket, phase.mutant_config_id)
+  }
 
   for (let i = 0; i <= idx && i < phases.length; i++) {
-    current += getPhaseMutantCount(phases[i])
-    const phaseTypeIds = getPhaseMutantTypeIds(phases[i])
-    for (const typeId of phaseTypeIds) {
-      addTypeId(currentTypes, typeId)
-    }
+    addPhaseMutants(phases[i], 'current')
   }
   for (let i = idx + 1; i < phases.length; i++) {
-    potential += getPhaseMutantCount(phases[i])
-    const phaseTypeIds = getPhaseMutantTypeIds(phases[i])
-    for (const typeId of phaseTypeIds) {
-      addTypeId(potentialTypes, typeId)
-    }
+    addPhaseMutants(phases[i], 'potential')
   }
 
   if (
     Array.isArray(plant.mutant_config_ids) &&
     plant.mutant_config_ids.length
   ) {
-    if (current <= 0) {
-      potential = Math.max(potential, plant.mutant_config_ids.length)
-    }
+    const fallbackBucket =
+      potential > 0 || potentialTypes.length > 0 ? 'potential' : 'current'
     for (const typeId of plant.mutant_config_ids) {
-      addTypeId(potentialTypes, typeId)
+      const id = toNum(typeId)
+      if (id <= 0) continue
+      if (currentTypes.includes(id) || potentialTypes.includes(id)) continue
+      addMutant(fallbackBucket, id)
     }
   }
 
