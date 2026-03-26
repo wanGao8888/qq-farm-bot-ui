@@ -1074,41 +1074,6 @@ async function getNonMutantLandIds(landIds) {
   return nonMutant
 }
 
-async function getCurrentMutantLandIds() {
-  let landsReply
-  try {
-    landsReply = await getAllLands()
-  } catch (e) {
-    logWarn('变异', `获取全场变异地块失败: ${e.message}`, {
-      module: 'farm',
-      event: 'mutant_check',
-      result: 'error',
-    })
-    return []
-  }
-  const lands = Array.isArray(landsReply && landsReply.lands)
-    ? landsReply.lands
-    : []
-  const landsMap = buildLandMap(lands)
-  const mutantLandIds = []
-  for (const land of lands) {
-    if (!land || !land.unlocked) continue
-    const landId = toNum(land.id)
-    if (!landId) continue
-    if (isOccupiedSlaveLand(land, landsMap)) continue
-    const plant = land.plant
-    if (!plant || !Array.isArray(plant.phases) || plant.phases.length === 0)
-      continue
-    const currentPhase = getCurrentPhase(plant.phases, false, '')
-    if (!currentPhase) continue
-    const mutantCounts = getMutantCounts(plant, currentPhase)
-    if (mutantCounts.current > 0) {
-      mutantLandIds.push(landId)
-    }
-  }
-  return [...new Set(mutantLandIds)]
-}
-
 async function plantOnceByStrategy(landsToPlant, state, options = {}) {
   const skipFertilizer = !!options.skipFertilizer
   const strategy = getPlantingStrategy()
@@ -1159,18 +1124,18 @@ async function autoPlantEmptyLands(deadLandIds, emptyLandIds) {
     ...new Set(landsToPlant.map((id) => toNum(id)).filter(Boolean)),
   ]
   if (pending.length === 0) return
-  const fertilizeTargets = [...pending]
 
   const maxRounds = 10
   for (let round = 1; round <= maxRounds && pending.length > 0; round++) {
     await plantOnceByStrategy(pending, state, { skipFertilizer: true })
     await sleep(5000)
     const nonMutant = await getNonMutantLandIds(pending)
+    const nonMutantSet = new Set(nonMutant)
+    const mutantNow = pending.filter((id) => !nonMutantSet.has(id))
+    if (mutantNow.length > 0) {
+      await runFertilizerByConfig(mutantNow)
+    }
     if (nonMutant.length === 0) {
-      const globalMutantTargets = await getCurrentMutantLandIds()
-      const finalFertilizeTargets =
-        globalMutantTargets.length > 0 ? globalMutantTargets : fertilizeTargets
-      await runFertilizerByConfig(finalFertilizeTargets)
       return
     }
     try {
